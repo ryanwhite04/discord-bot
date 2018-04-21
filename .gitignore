@@ -58,3 +58,5 @@ typings/
 .env
 
 slack
+.vscode
+config.json

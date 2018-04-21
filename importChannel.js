@@ -2,69 +2,80 @@
 const fs = require('fs');
 const names = require('./slack/usernames');
 const sequential = require('promise-sequential');
+const clientPromise = require('./client');
 
-require('./client')
-    .then(client => require('./slack/current')
-        .slice(0, 2)
-        .map(createChannel(client.guilds.array()[0]))
-    )
-    .catch(console.log)
+module.exports = async ({ name, topic, purpose }) => {
+    const { guilds } = await clientPromise.catch(console.error)
+    const [ guild ] = guilds.array() // The only guild is the ACYA guild/server
+    channel = await createChannel(guild, { name, topic, purpose })
+    return await sendChannelMessages(channel).catch(console.error)
+}
 
+/**
+ * Create a channel in Discord using details from slack
+ * @param {Object} guild - The guild/server to create the channel within
+ * @param {} slackChannel - The name, topic and purpose of the slack channel to import  
+ */
+async function createChannel(guild, { name, topic, purpose }) {
+    console.log('createChannel in Guild: ', guild.name);
+    const channel = await guild.createChannel(name, 'text', [], 'Imported from Slack').catch(console.error)
+    await channel.setTopic(`${topic}\n\n${purpose}`).catch(console.error)
+    return channel;
+}
 
-function createChannel(guild) {
-    console.log('createChannel', guild.name)
-    return ({ name, topic, purpose }) => {
-        return guild.createChannel(name, 'text', [], 'Imported from Slack')
-            .then(channel => channel.setTopic(`${topic}\n\n${purpose}`))
-            .then(sendMessages)
-            .catch(console.log)
+async function sendChannelMessages(channel) {
+
+    const { name } = channel;
+    const days = await readdirAsync(`./slack/${name}`).catch(console.error);
+    console.log('sendMessages in Channel: ', name);
+
+    return await sequential(days
+        .sort()
+        .map(date => ({
+            date: new Date(date.split('.')[0]).toDateString(),
+            messages: require(`./slack/${name}/${date}`)
+        }))
+        .map(object => () => sendDaysMessages(object)))
+}
+
+async function sendDaysMessages({ date, messages }) {
+
+    function format({ user, text }) {
+        return `**${names[user]}**: ${text.replace(/<@([^>]+)>/g, (str, p1, offset, s) => `@**${names[p1]}**`)}
+            `
     }
+
+    await channel.send(`__Importing ${messages.length} Messages from ${date}__`);
+
+    const promises = messages
+        .map(format)
+        .map(message => () => channel.send(message).catch(console.error))
+
+    return await sequential(promises)
 }
 
-function sendMessages(channel) {
-    console.log('sendMessages', channel.name)
-    return getMessages(channel)
-        .then(console.log)
-        .catch(console.log)
-}
-
-function getMessages(channel) {
-    const name = channel.name;
-    console.log('getMessages', name);
+/**
+ * Same as readFile, but returns a promise
+ * @param {string} path - Path to a directory
+ * @returns {string[]} A list of paths in the directories
+ */
+function readFileAsync(path) {
     return new Promise((resolve, reject) => {
-        fs.readdir(`./slack/${name}`, (err, days) => {
-            err && reject(err);
-            
-            const promises = days.sort()
-                .map(date => ({
-                    date: new Date(date.split('.')[0]).toDateString(),
-                    messages: require(`./slack/${channel.name}/${date}`)
-                }))
-                .map(({ date, messages }) => {
-                    return () => {
-                        return channel.send(`__Importing ${messages.length} Slack Messages from ${date}__`)
-                            .then(() => {
-                                return Promise.all(messages
-                                    .filter(({ type, subtype }) => type)
-                                    .map(post(channel)))
-                            })
-                            .then(messages => {
-                                console.log(`Finished Importing ${messages.length} Slack Messages form ${date}`);
-                                return channel.send(`__Finished Importing ${messages.length} Slack Messages from ${date}__`)
-                            })
-                    }
-                    
-                })
-            
-            return sequential(promises);
-            
+        fs.readFile(path, 'utf-8', (err, file) => {
+            err ? reject(err) : resolve(file)
         })
     })
 }
 
-function post(channel) {
-    return ({ user, text, subtype }) => {
-        text = text.replace(/<@([^>]+)>/g, (str, p1, offset, s) => `@**${names[p1]}**`)
-        channel.send(subtype ? `**${names[user]}**, *${subtype}*: ${text}`: `**${names[user]}**: ${text}`)
-    }
+/**
+ * Same as readDir, but returns a promise
+ * @param {string} path - Path to a file
+ * @returns {string} The contents of the file
+ */
+function readdirAsync(path) {
+    return new Promise((resolve, reject) => {
+        fs.readdir(path, (err, paths) => {
+            err ? reject(err) : resolve(paths);
+        })
+    })
 }
