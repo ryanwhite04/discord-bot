@@ -1,6 +1,4 @@
 const importChannel = require('./importChannel');
-const channels = require('./slack/current');
-
 const path = require('path');
 
 console.log(process.argv);
