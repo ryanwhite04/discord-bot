@@ -1,6 +1,13 @@
 
 const fs = require('fs');
-const names = require('./slack/usernames');
+const path = require('path');
+const { guild: id } = require('./config');
+
+const names = require(`./${process.argv[2]}/users`).reduce((names, { id, profile: { real_name } }) => {
+    names[id] = real_name;
+    return names;
+}, {});
+
 const sequential = require('promise-sequential');
 const clientPromise = require('./client');
 
@@ -54,6 +61,8 @@ async function sendDaysMessages({ date, messages }) {
     return await sequential(promises)
 }
 
+    const days = await readdirAsync(`${process.argv[2]}/${name}`).catch(console.error);
+    console.log('sendMessages in Channel: ', name);
 /**
  * Same as readFile, but returns a promise
  * @param {string} path - Path to a directory
