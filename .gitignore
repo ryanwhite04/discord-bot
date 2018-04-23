@@ -57,6 +57,6 @@ typings/
 # dotenv environment variables file
 .env
 
-slack
+exports
 .vscode
 config.json
